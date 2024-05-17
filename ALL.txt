@@ -1,0 +1,122 @@
+5.1 Custom Repository Interface
+java
+Copiar código
+import java.sql.SQLException;
+
+public interface MyTypeRepositoryCustom {
+    void callMyProcedure(MyType myType) throws SQLException;
+}
+5.2 Custom Repository Implementation
+java
+Copiar código
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+import javax.annotation.PostConstruct;
+import java.sql.Connection;
+import java.sql.SQLException;
+import oracle.jdbc.OracleTypes;
+
+@Repository
+public class MyTypeRepositoryImpl implements MyTypeRepositoryCustom {
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Override
+    public void callMyProcedure(MyType myType) throws SQLException {
+        Connection conn = jdbcTemplate.getDataSource().getConnection();
+        try {
+            STRUCT myTypeStruct = myType.toSTRUCT(conn);
+            jdbcTemplate.execute((Connection con) -> {
+                try (CallableStatement callableStatement = con.prepareCall("{call my_procedure(?)}")) {
+                    callableStatement.setObject(1, myTypeStruct, OracleTypes.STRUCT);
+                    callableStatement.execute();
+                    return null;
+                }
+            });
+        } finally {
+            conn.close();
+        }
+    }
+}
+6. Integrate Custom Repository with JPA Repository
+Extend your JPA repository with the custom repository:
+
+java
+Copiar código
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface MyTypeRepository extends JpaRepository<MyTypeEntity, Long>, MyTypeRepositoryCustom {
+}
+7. Define the JPA Entity
+Define the JPA entity corresponding to your table:
+
+java
+Copiar código
+import javax.persistence.*;
+
+@Entity
+@Table(name = "my_table")
+public class MyTypeEntity {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String name;
+
+    // Getters and setters
+}
+8. Create a Service Layer to Call the Repository Method
+Create a service layer to call the custom repository method:
+
+java
+Copiar código
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.sql.SQLException;
+
+@Service
+public class MyTypeService {
+    @Autowired
+    private MyTypeRepository myTypeRepository;
+
+    @Transactional
+    public void executeMyProcedure(MyType myType) throws SQLException {
+        myTypeRepository.callMyProcedure(myType);
+    }
+}
+9. Use the Service in Your Controller
+Finally, use the service in your controller to expose an endpoint:
+
+java
+Copiar código
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.sql.SQLException;
+
+@RestController
+@RequestMapping("/api")
+public class MyTypeController {
+    @Autowired
+    private MyTypeService myTypeService;
+
+    @PostMapping("/executeProcedure")
+    public void executeProcedure(@RequestBody MyType myType) throws SQLException {
+        myTypeService.executeMyProcedure(myType);
+    }
+}
+Summary
+Dependencies: Ensure you have Oracle JDBC and Spring Data JPA dependencies.
+Oracle Setup: Define the UDT and stored procedure.
+Java Mapping: Create a Java class to map the UDT.
+Spring Configuration: Set up the data source and configure JdbcTemplate.
+Custom Repository: Implement a custom repository to call the stored procedure.
+JPA Repository: Extend the custom repository with the JPA repository.
+Service and Controller: Create service and controller layers to handle the logic and expose endpoints.
+This setup allows you to call an Oracle stored procedure with a user-defined type from a Spring application using JPA repositories.
